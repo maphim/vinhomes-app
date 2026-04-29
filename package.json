@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/migrate.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "generate-icons": "node scripts/generate-icons.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:generate": "node scripts/migrate.mjs --generate"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
