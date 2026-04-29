@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { sql } from "drizzle-orm";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const checks: { check: string; status: "ok" | "error"; detail: string }[] = [];
 
@@ -10,7 +12,7 @@ export async function GET() {
     check: "AUTH_SECRET",
     status: process.env.AUTH_SECRET ? "ok" : "error",
     detail: process.env.AUTH_SECRET
-      ? `Đã cấu hình (${process.env.AUTH_SECRET.slice(0, 8)}...)`
+      ? 'Đã cấu hình'
       : "Thiếu! Cần thêm vào Vercel Environment Variables",
   });
 

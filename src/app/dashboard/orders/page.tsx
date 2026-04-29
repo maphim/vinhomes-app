@@ -516,52 +516,28 @@ export default function OrdersPage() {
                   </>
                 )}
                 {order.status === "cash_received" && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs text-teal-600 border-teal-300"
-                      onClick={() =>
-                        handleStatusChange(order.id, "transferred")
-                      }
-                    >
-                      ✓ Xác nhận thành công
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs text-green-600 border-green-300"
-                      onClick={() =>
-                        handleStatusChange(order.id, "delivered")
-                      }
-                    >
-                      📦 Đã giao
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs text-green-600 border-green-300"
+                    onClick={() =>
+                      handleStatusChange(order.id, "delivered")
+                    }
+                  >
+                    📦 Đã giao
+                  </Button>
                 )}
                 {order.status === "transfer_pending" && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs text-teal-600 border-teal-300"
-                      onClick={() =>
-                        handleStatusChange(order.id, "transferred")
-                      }
-                    >
-                      ✓ Đã nhận chuyển khoản
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs text-green-600 border-green-300"
-                      onClick={() =>
-                        handleStatusChange(order.id, "delivered")
-                      }
-                    >
-                      📦 Đã giao
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs text-teal-600 border-teal-300"
+                    onClick={() =>
+                      handleStatusChange(order.id, "transferred")
+                    }
+                  >
+                    ✓ Đã nhận chuyển khoản
+                  </Button>
                 )}
                 {/* Move to next day */}
                 {dayFilter === "today" &&

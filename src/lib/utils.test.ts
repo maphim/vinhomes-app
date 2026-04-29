@@ -113,9 +113,9 @@ describe("generateOrderCode", () => {
     expect(generateOrderCode()).toMatch(/^DH-\d{6}-/);
   });
 
-  it("generates codes in DH-yyMMdd-XXX format", () => {
+  it("generates codes in DH-yyMMdd-XXXX format", () => {
     const code = generateOrderCode();
-    expect(code).toMatch(/^DH-\d{6}-\d{3}$/);
+    expect(code).toMatch(/^DH-\d{6}-\d{4}$/);
   });
 
   it("generates diverse codes over multiple calls", () => {

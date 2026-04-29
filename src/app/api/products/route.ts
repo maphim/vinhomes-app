@@ -4,6 +4,8 @@ import { products } from "@/db/schema";
 import { eq, like, sql, and, asc } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -89,7 +91,16 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Missing product ID" }, { status: 400 });
     }
 
-    await db.update(products).set(updates).where(eq(products.id, id));
+    // Mass assignment protection: only allow whitelisted fields
+    const ALLOWED_FIELDS = ['name', 'description', 'price', 'unit', 'category', 'isAvailable', 'sortOrder'];
+    const sanitizedUpdates: Record<string, unknown> = {};
+    for (const key of Object.keys(updates)) {
+      if (ALLOWED_FIELDS.includes(key)) {
+        sanitizedUpdates[key] = updates[key];
+      }
+    }
+
+    await db.update(products).set(sanitizedUpdates).where(eq(products.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

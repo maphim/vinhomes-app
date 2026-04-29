@@ -192,3 +192,12 @@ export function getBuildingDisplayName(code: string): string {
   const zone = getZoneByCode(found.zoneCode);
   return zone ? `${zone.nameVi} - ${found.name}` : found.name;
 }
+
+// TODO: Make this data API-driven instead of hardcoded
+// Use fetchBuildings() for dynamic data once API endpoint is created
+
+// Placeholder for future API-driven approach
+export async function fetchBuildings(): Promise<Zone[]> {
+  // In the future, this will call GET /api/zones
+  return ZONES;
+}

@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     db
       .select({ count: sql<number>`count(*)` })
       .from(orders)
-      .where(sql`created_at >= ${today.toISOString()}`),
+      .where(sql`orders.createdAt >= ${today}`),
   ]);
 
   const [totalCustomers, totalProducts, totalDrivers] = await Promise.all([
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
       .where(
         and(
           sql`status = 'delivered'`,
-          sql`created_at >= ${today.toISOString()}`
+          sql`${orders.deliveredAt} >= ${today}`
         )
       ),
   ]);

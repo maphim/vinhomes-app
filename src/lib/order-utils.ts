@@ -16,9 +16,9 @@ export function parseItemsFromNote(note: string): Array<{
 
   for (const line of lines) {
     const patterns = [
-      /(\d+)\s*(.+)/,
-      /(.+?)\s*x\s*(\d+)/i,
-      /(.+?)\s+(\d+)\s*(cái|hộp|chai|gói|kg|lít)?$/,
+      /(.+?)\s+(\d+)\s*(cái|hộp|chai|gói|kg|lít|ly|cốc|phần)$/i,  // unit-suffix first
+      /(.+?)\s*x\s*(\d+)/i,  // x-notation
+      /(\d+)\s*(.+)/,  // digit-first last
     ];
 
     let matched = false;
@@ -26,13 +26,12 @@ export function parseItemsFromNote(note: string): Array<{
       const match = line.match(pattern);
       if (match) {
         let name: string, qty: number;
-        if (pattern === patterns[0]) {
+        if (pattern === patterns[2]) {
+          // digit-first: "2 bánh mì" -> qty=2, name="bánh mì"
           qty = parseInt(match[1]);
           name = match[2].trim();
-        } else if (pattern === patterns[1]) {
-          name = match[1].trim();
-          qty = parseInt(match[2]);
         } else {
+          // unit-suffix or x-notation: name=group1, qty=group2
           name = match[1].trim();
           qty = parseInt(match[2]);
         }
@@ -52,10 +51,6 @@ export function parseItemsFromNote(note: string): Array<{
   return items;
 }
 
-/**
- * Get the start and end of a day offset from today.
- * 0 = today, 1 = tomorrow, -1 = yesterday
- */
 export function getDayRange(offset: number): { start: Date; end: Date } {
   const start = new Date();
   start.setHours(0, 0, 0, 0);

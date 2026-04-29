@@ -33,12 +33,14 @@ export function timeAgo(date: Date | string | null | undefined): string {
   return formatDistanceToNow(d, { addSuffix: true, locale: vi });
 }
 
+
+let _orderCounter = 0;
+
 export function generateOrderCode(): string {
   const now = new Date();
   const dateStr = format(now, "yyMMdd");
-  const rand = Math.floor(Math.random() * 999)
-    .toString()
-    .padStart(3, "0");
+  _orderCounter = (_orderCounter + 1) % 9999;
+  const rand = _orderCounter.toString().padStart(4, "0");
   return `DH-${dateStr}-${rand}`;
 }
 

@@ -10,15 +10,17 @@ import {
   Package,
   Truck,
   Upload,
+  Settings,
 } from "lucide-react";
 
 const navItems = [
   { label: "Tổng quan", href: "/dashboard", icon: LayoutDashboard },
   { label: "Đơn hàng", href: "/dashboard/orders", icon: ShoppingCart },
-  { label: "KH", href: "/dashboard/customers", icon: Users },
+  { label: "Khách hàng", href: "/dashboard/customers", icon: Users },
   { label: "Sản phẩm", href: "/dashboard/products", icon: Package },
   { label: "Tài xế", href: "/dashboard/drivers", icon: Truck },
   { label: "Nhập", href: "/dashboard/import", icon: Upload },
+  { label: "Cài đặt", href: "/dashboard/settings", icon: Settings },
 ];
 
 export function MobileBottomNav() {

@@ -5,6 +5,8 @@ import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { auth } from "@/lib/auth";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const session = await auth();
   if (!session?.user || session.user.role !== "admin") {
@@ -95,12 +97,22 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
     }
 
-    if (updates.password) {
-      updates.passwordHash = await bcrypt.hash(updates.password, 12);
-      delete updates.password;
+    // Mass assignment protection: only allow whitelisted fields
+    // Never allow role changes via this endpoint
+    const ALLOWED_FIELDS = ['name', 'email', 'phone', 'isActive'];
+    const sanitizedUpdates: Record<string, unknown> = {};
+    for (const key of Object.keys(updates)) {
+      if (ALLOWED_FIELDS.includes(key)) {
+        sanitizedUpdates[key] = updates[key];
+      }
     }
 
-    await db.update(users).set(updates).where(eq(users.id, id));
+    // Handle password separately: hash it and add to sanitized updates
+    if (updates.password) {
+      sanitizedUpdates.passwordHash = await bcrypt.hash(updates.password, 12);
+    }
+
+    await db.update(users).set(sanitizedUpdates).where(eq(users.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

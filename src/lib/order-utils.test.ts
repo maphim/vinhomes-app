@@ -22,10 +22,9 @@ describe("parseItemsFromNote", () => {
     expect(result).toEqual([{ productName: "bánh mì", quantity: 2, unitPrice: 0 }]);
   });
 
-  it('parses "bánh mì 2 cái" as 2x cái (digit-first pattern wins)', () => {
-    // The digit-first pattern /(\d+)\s*(.+)/ matches "2 cái" at the digit position
+  it('parses "bánh mì 2 cái" with unit suffix', () => {
     const result = parseItemsFromNote("bánh mì 2 cái");
-    expect(result).toEqual([{ productName: "cái", quantity: 2, unitPrice: 0 }]);
+    expect(result).toEqual([{ productName: "bánh mì", quantity: 2, unitPrice: 0 }]);
   });
 
   it('uses x-notation for "bánh mì x2"', () => {

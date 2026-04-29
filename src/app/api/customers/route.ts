@@ -3,7 +3,8 @@ import { db } from "@/db";
 import { customers, buildings, zones } from "@/db/schema";
 import { eq, like, or, sql, and, desc } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { normalizePhone } from "@/lib/utils";
+import { normalizePhone, isValidVietnamesePhone } from "@/lib/utils";
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -96,6 +97,10 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedPhone = normalizePhone(phone);
+
+    if (!isValidVietnamesePhone(normalizedPhone)) {
+      return NextResponse.json({ error: "Số điện thoại không hợp lệ" }, { status: 400 });
+    }
 
     // Check for existing customer
     const existing = await db

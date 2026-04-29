@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+export const dynamic = 'force-dynamic';
 import { db } from "@/db";
 import {
   orders,
@@ -35,11 +36,14 @@ export async function GET(req: NextRequest) {
   try {
     const conditions: any[] = [];
 
-    // ── Date filtering (uses createdAt; deliveryDate column support when DB migrated) ──
+    // ── Date filtering: use deliveryDate, fallback to createdAt ──
     if (day !== "all") {
       const dayOffset = day === "tomorrow" ? 1 : 0;
       const { start, end } = getDayRange(dayOffset);
-      conditions.push(and(gte(orders.createdAt, start), lt(orders.createdAt, end)) as any);
+      const targetDate = start.toISOString().split('T')[0];
+      conditions.push(
+        sql`COALESCE(${orders.deliveryDate}::text, ${orders.createdAt}::date::text) = ${targetDate}` as any
+      );
     }
 
     // ── Search ──
@@ -91,7 +95,7 @@ export async function GET(req: NextRequest) {
           status: orders.status,
           total: orders.total,
           note: orders.note,
-          // deliveryDate: orders.deliveryDate, // requires DB migration
+          deliveryDate: orders.deliveryDate,
           createdAt: orders.createdAt,
           customerId: customers.id,
           customerName: customers.name,
@@ -349,6 +353,26 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json(
         { error: "Không tìm thấy đơn hàng" },
         { status: 404 },
+      );
+    }
+
+    // ── State machine validation ──
+    const VALID_TRANSITIONS: Record<string, string[]> = {
+      pending: ["confirmed", "cancelled"],
+      confirmed: ["preparing", "cancelled"],
+      preparing: ["delivering", "cancelled"],
+      delivering: ["cash_received", "transfer_pending"],
+      cash_received: ["delivered"],
+      transfer_pending: ["transferred", "cash_received"],
+      transferred: ["delivered"],
+      delivered: [],
+      cancelled: [],
+    };
+
+    if (status && !VALID_TRANSITIONS[currentOrder.status]?.includes(status)) {
+      return NextResponse.json(
+        { error: `Không thể chuyển từ '${currentOrder.status}' sang '${status}'` },
+        { status: 400 }
       );
     }
 

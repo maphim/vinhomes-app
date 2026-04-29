@@ -3,6 +3,9 @@ import { db } from "@/db";
 import { zones, buildings, products, users } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { auth } from "@/lib/auth";
+
+export const dynamic = 'force-dynamic';
 
 // Seed data for Vinhomes Smart City
 const ZONES_DATA = [
@@ -105,6 +108,11 @@ const SAMPLE_PRODUCTS = [
 ];
 
 export async function GET() {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'admin') {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
   try {
     const result = await runSeed();
     const status = result.ok ? "✅" : "ℹ️";
@@ -229,6 +237,11 @@ async function runSeed() {
 }
 
 export async function POST() {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'admin') {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const result = await runSeed();
     return NextResponse.json(result);

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, customers, orderItems, orderStatusHistory, buildings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { orders, customers, orderItems, orderStatusHistory, buildings, products } from "@/db/schema";
+import { eq, like } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { generateOrderCode, normalizePhone } from "@/lib/utils";
+import { generateOrderCode, normalizePhone, isValidVietnamesePhone } from "@/lib/utils";
+export const dynamic = "force-dynamic";
 
 /**
  * Parse a single note/comment into structured order data.
@@ -128,6 +129,7 @@ function parseNote(note: string): {
 }
 
 // POST /api/import - import orders from pasted text
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -167,7 +169,7 @@ export async function POST(req: NextRequest) {
     for (const line of lines) {
       // If line starts a new order (has phone or building code), save current batch
       const hasPhone = /0[3-9][0-9]{8,9}/.test(line);
-      const hasBuilding = /\b(S\d{3}|GS[1-6]|SK[1-3]|V[1-3]|TK[1-2]|TC[1-3])\b/i.test(line);
+      const hasBuilding = /\b(S\d{3}|GS[1-6]|SK[1-3]|V[1-3]|TK[1-2]|TC[1-3]|MWH-[A-D]|ISP-[A-E]|LE-[AB])\b/i.test(line);
 
       if ((hasPhone || hasBuilding) && currentBatch.length > 0) {
         // Process current batch
@@ -235,6 +237,10 @@ async function processSingleOrder(
 
     const phone = normalizePhone(parsed.phone);
 
+    if (!isValidVietnamesePhone(phone)) {
+      return { success: false, note, error: "Số điện thoại không hợp lệ" };
+    }
+
     // Find or create customer
     let customer = await db
       .select()
@@ -286,13 +292,27 @@ async function processSingleOrder(
     const orderCode = generateOrderCode();
 
     // Calculate totals with 0 price (prices will be filled in later)
-    const items = parsed.items.map((item) => ({
-      productName: item.name,
-      quantity: item.quantity,
-      unitPrice: "0",
-      totalPrice: "0",
-      productId: 1,
-    }));
+    const items = await Promise.all(
+      parsed.items.map(async (item) => {
+        let productId = 1;
+        // Try to find matching product by name (case-insensitive)
+        const [matchingProduct] = await db
+          .select()
+          .from(products)
+          .where(like(products.name, `%${item.name}%`))
+          .limit(1);
+        if (matchingProduct) {
+          productId = matchingProduct.id;
+        }
+        return {
+          productName: item.name,
+          quantity: item.quantity,
+          unitPrice: "0",
+          totalPrice: "0",
+          productId,
+        };
+      })
+    );
 
     const [order] = await db
       .insert(orders)
