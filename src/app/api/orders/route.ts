@@ -46,23 +46,13 @@ export async function GET(req: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: any[] = [];
 
-    // ── Date filtering ──
+    // ── Date filtering (uses createdAt; deliveryDate column support when DB migrated) ──
     if (day !== "all") {
       const dayOffset = day === "tomorrow" ? 1 : 0;
       const { start, end } = getDayRange(dayOffset);
-      // Use deliveryDate if set, otherwise fall back to createdAt
-      conditions.push(
-        or(
-          and(gte(orders.deliveryDate, start.toISOString().split("T")[0]), lt(orders.deliveryDate, end.toISOString().split("T")[0])),
-          and(
-            sql`${orders.deliveryDate} IS NULL`,
-            gte(orders.createdAt, start),
-            lt(orders.createdAt, end),
-          ),
-        ) as any,
-      );
+      conditions.push(and(gte(orders.createdAt, start), lt(orders.createdAt, end)) as any);
     }
 
     // ── Search ──
@@ -114,7 +104,7 @@ export async function GET(req: NextRequest) {
           status: orders.status,
           total: orders.total,
           note: orders.note,
-          deliveryDate: orders.deliveryDate,
+          // deliveryDate: orders.deliveryDate, // requires DB migration
           createdAt: orders.createdAt,
           customerId: customers.id,
           customerName: customers.name,
