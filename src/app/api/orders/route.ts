@@ -12,20 +12,7 @@ import {
 import { eq, like, or, sql, and, desc, gte, lt } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { generateOrderCode, normalizePhone } from "@/lib/utils";
-
-// ──────────────────── HELPERS ────────────────────
-
-/** Get the start of a day offset from today. 0 = today, 1 = tomorrow, -1 = yesterday */
-function getDayRange(offset: number): { start: Date; end: Date } {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() + offset);
-
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-
-  return { start, end };
-}
+import { parseItemsFromNote, getDayRange } from "@/lib/order-utils";
 
 // ──────────────────── GET /api/orders ────────────────────
 
@@ -276,27 +263,25 @@ export async function POST(req: NextRequest) {
     const discount = 0;
     const total = subtotal + deliveryFee - discount;
 
-    // Set default deliveryDate to today if not provided
-    const defaultDeliveryDate = new Date()
-      .toISOString()
-      .split("T")[0];
+    const orderValues: any = {
+      orderCode,
+      customerId: customer.id,
+      buildingId: building.id,
+      status: "pending",
+      note: note || null,
+      subtotal: String(subtotal),
+      deliveryFee: String(deliveryFee),
+      discount: String(discount),
+      total: String(total),
+      paymentStatus: "unpaid",
+    };
+    if (deliveryDate) {
+      orderValues.deliveryDate = deliveryDate;
+    }
 
-    // Create order
     const [order] = await db
       .insert(orders)
-      .values({
-        orderCode,
-        customerId: customer.id,
-        buildingId: building.id,
-        status: "pending",
-        deliveryDate: deliveryDate || defaultDeliveryDate,
-        note: note || null,
-        subtotal: String(subtotal),
-        deliveryFee: String(deliveryFee),
-        discount: String(discount),
-        total: String(total),
-        paymentStatus: "unpaid",
-      })
+      .values(orderValues)
       .returning();
 
     // Create order items
@@ -405,51 +390,4 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// ──────────────────── HELPER: parse items from note ────────────────────
 
-function parseItemsFromNote(note: string): any[] {
-  if (!note) return [];
-
-  const items: any[] = [];
-  const lines = note
-    .split(/[\n,;]+/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  for (const line of lines) {
-    const patterns = [
-      /(\d+)\s*(.+)/,
-      /(.+?)\s*x\s*(\d+)/i,
-      /(.+?)\s+(\d+)\s*(cái|hộp|chai|gói|kg|lít)?$/,
-    ];
-
-    let matched = false;
-    for (const pattern of patterns) {
-      const match = line.match(pattern);
-      if (match) {
-        let name: string, qty: number;
-        if (pattern === patterns[0]) {
-          qty = parseInt(match[1]);
-          name = match[2].trim();
-        } else if (pattern === patterns[1]) {
-          name = match[1].trim();
-          qty = parseInt(match[2]);
-        } else {
-          name = match[1].trim();
-          qty = parseInt(match[2]);
-        }
-        if (name.length > 1 && !/^\d+$/.test(name)) {
-          items.push({ productName: name, quantity: qty, unitPrice: 0 });
-          matched = true;
-          break;
-        }
-      }
-    }
-
-    if (!matched && line.length > 2 && !/^\d+$/.test(line)) {
-      items.push({ productName: line, quantity: 1, unitPrice: 0 });
-    }
-  }
-
-  return items;
-}

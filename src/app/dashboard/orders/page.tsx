@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,7 +27,6 @@ import {
   getStatusColor,
   getStatusLabel,
   formatCurrency,
-  formatDate,
   timeAgo,
 } from "@/lib/utils";
 import { ZONES } from "@/lib/buildings";
@@ -104,7 +103,6 @@ function formatDayLabel(day: DayFilter): string {
 // ─────────────────── COMPONENT ───────────────────
 
 export default function OrdersPage() {
-  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -230,15 +228,6 @@ export default function OrdersPage() {
           buildingCode,
           apartmentNumber: aptNumber,
           note: orderNote,
-          deliveryDate:
-            dayFilter !== "all"
-              ? new Date(
-                  Date.now() +
-                    (dayFilter === "tomorrow" ? 1 : 0) * 86400000
-                )
-                  .toISOString()
-                  .split("T")[0]
-              : undefined,
         }),
       });
       if (!res.ok) {
