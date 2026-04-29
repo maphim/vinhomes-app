@@ -104,66 +104,134 @@ const SAMPLE_PRODUCTS = [
   { name: "Bánh tráng trộn", price: 15000, unit: "phần", category: "snack", sortOrder: 22 },
 ];
 
+export async function GET() {
+  try {
+    const result = await runSeed();
+    const status = result.ok ? "✅" : "ℹ️";
+    const html = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Khởi tạo dữ liệu</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0f4f8; }
+    .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 500px; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+    .success { color: #16a34a; }
+    .info { color: #64748b; }
+    .warning { color: #d97706; }
+    ul { padding-left: 1.25rem; }
+    li { margin: 0.25rem 0; font-size: 0.875rem; }
+    .btn { display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 class="${result.ok ? 'success' : 'warning'}">${status} ${result.message || 'Thành công!'}</h1>
+    ${result.ok ? `
+    <p class="info">Dữ liệu đã được khởi tạo:</p>
+    <ul>
+      <li>${result.zones} phân khu</li>
+      <li>${result.buildings} tòa nhà</li>
+      <li>${result.products} sản phẩm mẫu</li>
+      <li>Tài khoản admin: <strong>${result.adminEmail}</strong> / <strong>${result.adminPassword}</strong></li>
+    </ul>
+    <a href="/login" class="btn">Đăng nhập ngay</a>
+    ` : ''}
+    <p style="margin-top:1rem;font-size:0.75rem;color:#94a3b8;">${new Date().toLocaleString('vi-VN')}</p>
+  </div>
+</body>
+</html>`;
+    return new NextResponse(html, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  } catch (error) {
+    console.error("Error seeding data:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    return new NextResponse(
+      `<html><body style="font-family:system-ui;padding:2rem"><h1>❌ Lỗi</h1><pre style="color:red">${msg}</pre></body></html>`,
+      {
+        status: 500,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }
+    );
+  }
+}
+
+async function runSeed() {
+  // Check if already seeded
+  const existingZones = await db.select().from(zones).limit(1);
+  if (existingZones.length > 0) {
+    return {
+      ok: false,
+      message: "Dữ liệu đã được khởi tạo trước đó",
+      zones: 0, buildings: 0, products: 0,
+    };
+  }
+
+  // Create admin user
+  const passwordHash = await bcrypt.hash("admin123", 12);
+  await db.insert(users).values({
+    name: "Quản lý",
+    email: "admin@vinhomes.app",
+    passwordHash,
+    role: "admin",
+    phone: "0912345678",
+  });
+
+  // Create zones
+  for (const z of ZONES_DATA) {
+    await db.insert(zones).values({
+      code: z.code,
+      name: z.name,
+      sortOrder: z.sortOrder,
+      description: `Phân khu ${z.name}`,
+    });
+  }
+
+  // Get zone map
+  const zoneRows = await db.select().from(zones);
+  const zoneMap = new Map(zoneRows.map((z) => [z.code, z.id]));
+
+  // Create buildings
+  for (const b of BUILDINGS_DATA) {
+    const zoneId = zoneMap.get(b.zoneCode);
+    if (zoneId) {
+      await db.insert(buildings).values({
+        zoneId,
+        code: b.code,
+        name: b.name,
+      });
+    }
+  }
+
+  // Create sample products
+  for (const p of SAMPLE_PRODUCTS) {
+    await db.insert(products).values({
+      name: p.name,
+      price: String(p.price),
+      unit: p.unit,
+      category: p.category,
+      sortOrder: p.sortOrder,
+    });
+  }
+
+  return {
+    ok: true,
+    message: "Khởi tạo dữ liệu thành công!",
+    zones: ZONES_DATA.length,
+    buildings: BUILDINGS_DATA.length,
+    products: SAMPLE_PRODUCTS.length,
+    adminEmail: "admin@vinhomes.app",
+    adminPassword: "admin123",
+  };
+}
+
 export async function POST() {
   try {
-    // Check if already seeded
-    const existingZones = await db.select().from(zones).limit(1);
-    if (existingZones.length > 0) {
-      return NextResponse.json({ message: "Dữ liệu đã được khởi tạo" });
-    }
-
-    // Create admin user
-    const passwordHash = await bcrypt.hash("admin123", 12);
-    await db.insert(users).values({
-      name: "Quản lý",
-      email: "admin@vinhomes.app",
-      passwordHash,
-      role: "admin",
-      phone: "0912345678",
-    });
-
-    // Create zones
-    for (const z of ZONES_DATA) {
-      await db.insert(zones).values({
-        code: z.code,
-        name: z.name,
-        sortOrder: z.sortOrder,
-        description: `Phân khu ${z.name}`,
-      });
-    }
-
-    // Get zone map
-    const zoneRows = await db.select().from(zones);
-    const zoneMap = new Map(zoneRows.map((z) => [z.code, z.id]));
-
-    // Create buildings
-    for (const b of BUILDINGS_DATA) {
-      const zoneId = zoneMap.get(b.zoneCode);
-      if (zoneId) {
-        await db.insert(buildings).values({
-          zoneId,
-          code: b.code,
-          name: b.name,
-        });
-      }
-    }
-
-    // Create sample products
-    for (const p of SAMPLE_PRODUCTS) {
-      await db.insert(products).values({
-        name: p.name,
-        price: String(p.price),
-        unit: p.unit,
-        category: p.category,
-        sortOrder: p.sortOrder,
-      });
-    }
-
-    return NextResponse.json({
-      zones: ZONES_DATA.length,
-      buildings: BUILDINGS_DATA.length,
-      products: SAMPLE_PRODUCTS.length,
-    });
+    const result = await runSeed();
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error seeding data:", error);
     return NextResponse.json(
