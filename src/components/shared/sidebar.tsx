@@ -38,17 +38,22 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile trigger */}
+      {/* Mobile header bar with hamburger + settings */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="fixed top-3 left-3 z-50 md:hidden"
-          >
-            <Menu className="w-5 h-5" />
-          </Button>
-        </SheetTrigger>
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-12 px-3 border-b bg-background md:hidden">
+          <SheetTrigger
+            render={
+              <Button variant="ghost" size="icon">
+                <Menu className="w-5 h-5" />
+              </Button>
+            }
+          />
+          <Link href="/dashboard/settings">
+            <Button variant="ghost" size="icon">
+              <Settings className="w-5 h-5" />
+            </Button>
+          </Link>
+        </div>
         <SheetContent side="left" className="p-0 w-64">
           <SidebarContent pathname={pathname} onNavigate={() => setOpen(false)} />
         </SheetContent>

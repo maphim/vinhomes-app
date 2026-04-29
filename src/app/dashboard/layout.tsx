@@ -20,7 +20,7 @@ export default async function DashboardLayout({
       <ServiceWorkerRegister />
       <Sidebar />
       <MobileBottomNav />
-      <main className="flex-1 overflow-y-auto bg-background pb-16 md:pb-0">
+      <main className="flex-1 overflow-y-auto bg-background pt-12 pb-16 md:pt-0 md:pb-0">
         <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
           {children}
         </div>
