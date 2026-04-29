@@ -48,6 +48,9 @@ export function getStatusColor(status: string): string {
     confirmed: "bg-blue-100 text-blue-800 border-blue-300",
     preparing: "bg-purple-100 text-purple-800 border-purple-300",
     delivering: "bg-orange-100 text-orange-800 border-orange-300",
+    cash_received: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    transfer_pending: "bg-cyan-100 text-cyan-800 border-cyan-300",
+    transferred: "bg-teal-100 text-teal-800 border-teal-300",
     delivered: "bg-green-100 text-green-800 border-green-300",
     cancelled: "bg-red-100 text-red-800 border-red-300",
   };
@@ -60,6 +63,9 @@ export function getStatusLabel(status: string): string {
     confirmed: "Đã xác nhận",
     preparing: "Đang chuẩn bị",
     delivering: "Đang giao",
+    cash_received: "Đã nhận tiền mặt",
+    transfer_pending: "Chờ chuyển khoản",
+    transferred: "Đã chuyển khoản",
     delivered: "Đã giao",
     cancelled: "Đã hủy",
   };

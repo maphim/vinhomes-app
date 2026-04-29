@@ -4,16 +4,31 @@ import {
   orders,
   customers,
   orderItems,
-  products,
   orderStatusHistory,
   buildings,
   zones,
+  users,
 } from "@/db/schema";
-import { eq, like, or, sql, and, desc } from "drizzle-orm";
+import { eq, like, or, sql, and, desc, gte, lt } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { generateOrderCode, normalizePhone } from "@/lib/utils";
 
-// GET /api/orders - list orders with filters + pagination
+// ──────────────────── HELPERS ────────────────────
+
+/** Get the start of a day offset from today. 0 = today, 1 = tomorrow, -1 = yesterday */
+function getDayRange(offset: number): { start: Date; end: Date } {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() + offset);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return { start, end };
+}
+
+// ──────────────────── GET /api/orders ────────────────────
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -22,47 +37,76 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const page = parseInt(url.searchParams.get("page") || "1");
-  const limit = parseInt(url.searchParams.get("limit") || "20");
+  const limit = parseInt(url.searchParams.get("limit") || "50");
   const search = url.searchParams.get("search") || "";
   const status = url.searchParams.get("status") || "all";
   const zoneCode = url.searchParams.get("zone") || "all";
+  // day: "today" | "tomorrow" | "all"  (default "today")
+  const day = url.searchParams.get("day") || "today";
   const offset = (page - 1) * limit;
 
   try {
-    const conditions = [];
+    const conditions: ReturnType<typeof eq>[] = [];
 
+    // ── Date filtering ──
+    if (day !== "all") {
+      const dayOffset = day === "tomorrow" ? 1 : 0;
+      const { start, end } = getDayRange(dayOffset);
+      // Use deliveryDate if set, otherwise fall back to createdAt
+      conditions.push(
+        or(
+          and(gte(orders.deliveryDate, start.toISOString().split("T")[0]), lt(orders.deliveryDate, end.toISOString().split("T")[0])),
+          and(
+            sql`${orders.deliveryDate} IS NULL`,
+            gte(orders.createdAt, start),
+            lt(orders.createdAt, end),
+          ),
+        ) as any,
+      );
+    }
+
+    // ── Search ──
     if (search) {
       const searchPattern = `%${search}%`;
       conditions.push(
         or(
           like(orders.orderCode, searchPattern),
           like(customers.name, searchPattern),
-          like(customers.phone, `%${search}%`)
-        )
+          like(customers.phone, `%${search}%`),
+        ) as any,
       );
     }
 
+    // ── Status filter ──
     if (status !== "all") {
-      conditions.push(eq(orders.status, status as any));
+      conditions.push(eq(orders.status, status as any) as any);
     }
 
+    // ── Zone filter ──
     if (zoneCode !== "all") {
       conditions.push(
         sql`EXISTS (SELECT 1 FROM ${buildings} b 
                 JOIN ${zones} z ON b.zone_id = z.id 
                 WHERE b.id = ${orders.buildingId} 
-                AND z.code = ${zoneCode})`
+                AND z.code = ${zoneCode})` as any,
       );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
+    // ── Main query with JOINs (no subquery) ──
     const [totalResult, ordersData] = await Promise.all([
+      // Optimized count: use a subquery to avoid expensive count(distinct) with JOINs
       db
-        .select({ count: sql<number>`count(distinct ${orders.id})` })
-        .from(orders)
-        .leftJoin(customers, eq(orders.customerId, customers.id))
-        .where(whereClause),
+        .select({ count: sql<number>`count(*)` })
+        .from(
+          db
+            .select({ id: orders.id })
+            .from(orders)
+            .leftJoin(customers, eq(orders.customerId, customers.id))
+            .where(whereClause)
+            .as("filtered_orders"),
+        ),
       db
         .select({
           id: orders.id,
@@ -70,25 +114,48 @@ export async function GET(req: NextRequest) {
           status: orders.status,
           total: orders.total,
           note: orders.note,
+          deliveryDate: orders.deliveryDate,
           createdAt: orders.createdAt,
           customerId: customers.id,
           customerName: customers.name,
           customerPhone: customers.phone,
+          buildingId: buildings.id,
           buildingCode: buildings.code,
+          buildingName: buildings.name,
+          zoneId: zones.id,
           zoneName: zones.name,
-          driverName: sql<string | null>`(SELECT u.name FROM users u WHERE u.id = ${orders.assignedDriverId})`,
+          driverId: users.id,
+          driverName: users.name,
         })
         .from(orders)
         .leftJoin(customers, eq(orders.customerId, customers.id))
         .leftJoin(buildings, eq(orders.buildingId, buildings.id))
         .leftJoin(zones, eq(buildings.zoneId, zones.id))
+        .leftJoin(users, eq(orders.assignedDriverId, users.id))
         .where(whereClause)
-        .orderBy(desc(orders.createdAt))
+        .orderBy(
+          buildings.code,
+          desc(
+            sql`CASE 
+              WHEN ${orders.status} = 'pending' THEN 1
+              WHEN ${orders.status} = 'confirmed' THEN 2
+              WHEN ${orders.status} = 'preparing' THEN 3
+              WHEN ${orders.status} = 'delivering' THEN 4
+              WHEN ${orders.status} = 'cash_received' THEN 5
+              WHEN ${orders.status} = 'transfer_pending' THEN 6
+              WHEN ${orders.status} = 'transferred' THEN 7
+              WHEN ${orders.status} = 'delivered' THEN 8
+              WHEN ${orders.status} = 'cancelled' THEN 9
+              ELSE 10
+            END`,
+          ),
+          desc(orders.createdAt),
+        )
         .limit(limit)
         .offset(offset),
     ]);
 
-    // Fetch items for each order
+    // ── Batch fetch items ──
     const orderIds = ordersData.map((o) => o.id);
     let itemsMap: Record<number, any[]> = {};
     if (orderIds.length > 0) {
@@ -118,12 +185,13 @@ export async function GET(req: NextRequest) {
     console.error("Error fetching orders:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// POST /api/orders - create a new order
+// ──────────────────── POST /api/orders ────────────────────
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -139,12 +207,13 @@ export async function POST(req: NextRequest) {
       apartmentNumber,
       note,
       items: rawItems,
+      deliveryDate,
     } = body;
 
     if (!customerName || !customerPhone || !buildingCode) {
       return NextResponse.json(
         { error: "Thiếu thông tin: tên, SĐT, tòa nhà" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -167,12 +236,11 @@ export async function POST(req: NextRequest) {
     if (!building) {
       return NextResponse.json(
         { error: `Không tìm thấy tòa nhà: ${buildingCode}` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (customer) {
-      // Update customer info
       await db
         .update(customers)
         .set({
@@ -183,7 +251,6 @@ export async function POST(req: NextRequest) {
         })
         .where(eq(customers.id, customer.id));
     } else {
-      // Create new customer
       customer = await db
         .insert(customers)
         .values({
@@ -202,15 +269,7 @@ export async function POST(req: NextRequest) {
     // Parse items from note if no items provided
     let items = rawItems;
     if (!items || items.length === 0) {
-      // Try to parse items from note
-      if (note) {
-        const parsedItems = parseItemsFromNote(note);
-        items = parsedItems;
-      } else {
-        // Create a minimal order with just the basic info
-        // Set a default total of 0
-        items = [];
-      }
+      items = note ? parseItemsFromNote(note) : [];
     }
 
     // Calculate totals
@@ -227,6 +286,11 @@ export async function POST(req: NextRequest) {
     const discount = 0;
     const total = subtotal + deliveryFee - discount;
 
+    // Set default deliveryDate to today if not provided
+    const defaultDeliveryDate = new Date()
+      .toISOString()
+      .split("T")[0];
+
     // Create order
     const [order] = await db
       .insert(orders)
@@ -235,6 +299,7 @@ export async function POST(req: NextRequest) {
         customerId: customer.id,
         buildingId: building.id,
         status: "pending",
+        deliveryDate: deliveryDate || defaultDeliveryDate,
         note: note || null,
         subtotal: String(subtotal),
         deliveryFee: String(deliveryFee),
@@ -259,7 +324,7 @@ export async function POST(req: NextRequest) {
             unitPrice: String(unitPrice),
             totalPrice: String(unitPrice * quantity),
           };
-        })
+        }),
       );
     }
 
@@ -275,12 +340,13 @@ export async function POST(req: NextRequest) {
     console.error("Error creating order:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// PATCH /api/orders - update order status
+// ──────────────────── PATCH /api/orders ────────────────────
+
 export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -289,12 +355,12 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, status } = body;
+    const { id, status, deliveryDate } = body;
 
-    if (!id || !status) {
+    if (!id) {
       return NextResponse.json(
-        { error: "Thiếu ID hoặc trạng thái" },
-        { status: 400 }
+        { error: "Thiếu ID đơn hàng" },
+        { status: 400 },
       );
     }
 
@@ -307,57 +373,63 @@ export async function PATCH(req: NextRequest) {
     if (!currentOrder) {
       return NextResponse.json(
         { error: "Không tìm thấy đơn hàng" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // Update order
     const updateData: any = {
-      status,
       updatedAt: new Date(),
     };
 
-    if (status === "delivered") {
-      updateData.deliveredAt = new Date();
+    if (status) {
+      updateData.status = status;
+      if (status === "delivered") {
+        updateData.deliveredAt = new Date();
+      }
+    }
+
+    if (deliveryDate) {
+      updateData.deliveryDate = deliveryDate;
     }
 
     await db.update(orders).set(updateData).where(eq(orders.id, id));
 
-    // Create status history
-    await db.insert(orderStatusHistory).values({
-      orderId: id,
-      fromStatus: currentOrder.status as any,
-      toStatus: status,
-      changedByUserId: Number(session.user.id),
-    });
+    // Create status history (only if status changed)
+    if (status && status !== currentOrder.status) {
+      await db.insert(orderStatusHistory).values({
+        orderId: id,
+        fromStatus: currentOrder.status as any,
+        toStatus: status,
+        changedByUserId: Number(session.user.id),
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error updating order:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// Parse items from natural language note text
+// ──────────────────── HELPER: parse items from note ────────────────────
+
 function parseItemsFromNote(note: string): any[] {
   if (!note) return [];
 
   const items: any[] = [];
-
-  // Common product patterns in Vietnamese
-  const lines = note.split(/[\n,;]+/).map((l) => l.trim()).filter(Boolean);
+  const lines = note
+    .split(/[\n,;]+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   for (const line of lines) {
-    // Pattern: "2 bánh mì" or "bánh mì x2" or "bánh mì 2 cái"
     const patterns = [
-      // "2 bánh mì" - quantity first
       /(\d+)\s*(.+)/,
-      // "bánh mì x2" or "bánh mì x 2"
       /(.+?)\s*x\s*(\d+)/i,
-      // "bánh mì 2" - quantity at end
       /(.+?)\s+(\d+)\s*(cái|hộp|chai|gói|kg|lít)?$/,
     ];
 
@@ -376,13 +448,8 @@ function parseItemsFromNote(note: string): any[] {
           name = match[1].trim();
           qty = parseInt(match[2]);
         }
-        // Skip if name is just a number or too short
         if (name.length > 1 && !/^\d+$/.test(name)) {
-          items.push({
-            productName: name,
-            quantity: qty,
-            unitPrice: 0,
-          });
+          items.push({ productName: name, quantity: qty, unitPrice: 0 });
           matched = true;
           break;
         }
@@ -390,12 +457,7 @@ function parseItemsFromNote(note: string): any[] {
     }
 
     if (!matched && line.length > 2 && !/^\d+$/.test(line)) {
-      // Single item without quantity
-      items.push({
-        productName: line,
-        quantity: 1,
-        unitPrice: 0,
-      });
+      items.push({ productName: line, quantity: 1, unitPrice: 0 });
     }
   }
 

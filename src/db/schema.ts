@@ -10,6 +10,8 @@ import {
   boolean,
   pgEnum,
   json,
+  date,
+  index,
 } from "drizzle-orm/pg-core";
 
 // ────────────────────────── ENUMS ──────────────────────────
@@ -20,6 +22,9 @@ export const orderStatusEnum = pgEnum("order_status", [
   "confirmed",
   "preparing",
   "delivering",
+  "cash_received",
+  "transfer_pending",
+  "transferred",
   "delivered",
   "cancelled",
 ]);
@@ -184,6 +189,7 @@ export const orders = pgTable("orders", {
     .references(() => buildings.id),
   assignedDriverId: integer("assigned_driver_id").references(() => users.id),
   status: orderStatusEnum("status").notNull().default("pending"),
+  deliveryDate: date("delivery_date"), // planned delivery date (T+0 = today, T+1 = tomorrow, etc.)
   note: text("note"), // original note/comment from customer
   deliveryNote: text("delivery_note"),
   subtotal: decimal("subtotal", { precision: 12, scale: 0 }).notNull(),
@@ -197,7 +203,13 @@ export const orders = pgTable("orders", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   deliveredAt: timestamp("delivered_at", { mode: "date" }),
-});
+}, (table) => ({
+  createdAtIdx: index("orders_created_at_idx").on(table.createdAt),
+  statusIdx: index("orders_status_idx").on(table.status),
+  buildingIdIdx: index("orders_building_id_idx").on(table.buildingId),
+  customerIdIdx: index("orders_customer_id_idx").on(table.customerId),
+  deliveryDateIdx: index("orders_delivery_date_idx").on(table.deliveryDate),
+}));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   customer: one(customers, {
